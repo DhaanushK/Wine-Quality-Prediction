@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import joblib
 from keras import Model
 from keras.callbacks import EarlyStopping
 from keras.layers import (
@@ -33,6 +34,69 @@ parser.add_argument(
 args = parser.parse_args()
 
 seed = 8
+
+# The balanced CSVs store pre-scaled inputs. Keep the matching transforms for
+# accepting raw UCI-style measurements in the interactive app.
+RAW_INPUT_TRANSFORMS = {
+    "red": {
+        "method": "minmax",
+        "min": {
+            "fixed acidity": 4.6,
+            "volatile acidity": 0.12,
+            "citric acid": 0.0,
+            "residual sugar": 0.9,
+            "chlorides": 0.012,
+            "free sulfur dioxide": 1.0,
+            "total sulfur dioxide": 6.0,
+            "density": 0.99007,
+            "pH": 2.74,
+            "sulphates": 0.33,
+            "alcohol": 8.4,
+        },
+        "max": {
+            "fixed acidity": 15.9,
+            "volatile acidity": 1.58,
+            "citric acid": 1.0,
+            "residual sugar": 15.5,
+            "chlorides": 0.611,
+            "free sulfur dioxide": 72.0,
+            "total sulfur dioxide": 289.0,
+            "density": 1.00369,
+            "pH": 4.01,
+            "sulphates": 2.0,
+            "alcohol": 14.9,
+        },
+    },
+    "white": {
+        "method": "standard",
+        "mean": {
+            "fixed acidity": 6.854787668436097,
+            "volatile acidity": 0.27824111882400976,
+            "citric acid": 0.33419150673744386,
+            "residual sugar": 6.391414863209474,
+            "chlorides": 0.04577235606369946,
+            "free sulfur dioxide": 35.30808493262556,
+            "total sulfur dioxide": 138.36065741118824,
+            "density": 0.9940273764801959,
+            "pH": 3.1882666394446715,
+            "sulphates": 0.48984687627603113,
+            "alcohol": 10.514267047774602,
+        },
+        "scale": {
+            "fixed acidity": 0.8437820791264506,
+            "volatile acidity": 0.10078425854188974,
+            "citric acid": 0.12100744957029214,
+            "residual sugar": 5.071539989333933,
+            "chlorides": 0.02184573768505638,
+            "free sulfur dioxide": 17.005401105808414,
+            "total sulfur dioxide": 42.49372602475034,
+            "density": 0.0029906015821480275,
+            "pH": 0.15098518431212068,
+            "sulphates": 0.1141141831056649,
+            "alcohol": 1.2304949365418656,
+        },
+    },
+}
 
 project_root = Path(__file__).resolve().parents[1]
 dataset_path = project_root / "dataset" / f"winequality-{args.wine}-balanced.csv"
@@ -159,9 +223,27 @@ y_pred = np.argmax(test_probabilities, axis=1)
 y_true = np.argmax(y_test_encoded, axis=1)
 combined_test_accuracy = accuracy_score(y_true, y_pred)
 
+artifacts_dir = project_root / "artifacts"
+artifacts_dir.mkdir(exist_ok=True)
+pipeline_path = artifacts_dir / f"{args.wine}-pipeline.joblib"
+model_path = artifacts_dir / f"{args.wine}-combined.keras"
+joblib.dump(
+    {
+        "scaler": scaler,
+        "mlp": mlp,
+        "classes": encoder.categories_[0].astype(int),
+        "features": list(X.columns),
+        "split": split,
+        "raw_input_transform": RAW_INPUT_TRANSFORMS[args.wine],
+    },
+    pipeline_path,
+)
+combined_model.save(model_path)
+
 print(f"CNN test accuracy ({args.wine} wine): {cnn_test_accuracy:.4%}")
 print(f"MLP test accuracy ({args.wine} wine): {mlp_test_accuracy:.4%}")
 print(f"Combined test accuracy ({args.wine} wine): {combined_test_accuracy:.4%}")
+print(f"Saved inference model to: {model_path}")
 
 ConfusionMatrixDisplay(confusion_matrix=confusion_matrix(y_true, y_pred)).plot()
 plt.title(f"Combined Model Confusion Matrix ({args.wine.title()} Wine)")

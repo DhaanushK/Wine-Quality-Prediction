@@ -19,7 +19,7 @@ This project predicts wine quality using a hybrid deep learning model (MC-CNN + 
 ## Results
 - The paper reports 87.6% accuracy for red wine and 90% for white wine.
 - The historical project screenshot records 87.65% combined test accuracy for red wine.
-- Current run of the historical CNN + MLP pipeline: combined test accuracy is 87.29% for red wine and 90.67% for white wine. The standalone MLP scores are 87.65% and 90.58%, respectively.
+- Latest local run of the CNN + MLP pipeline: combined test accuracy is 87.41% for red wine and 90.58% for white wine. The standalone MLP scores are 87.65% and 90.58%, respectively. The CNN has unseeded random initialization, so results can vary slightly between runs.
 - The PDF says to remove duplicates, but the original notebook and saved red result use the balanced CSV as provided. The historical pipeline is retained here to compare against the saved result.
 
 ## Key Features
@@ -49,3 +49,20 @@ python .\src\wine-code.py --wine white
 ```
 
 The training script reads the selected bundled balanced dataset using a path relative to the script, rounds the quality target, and prints CNN, MLP, and combined test accuracies. TensorFlow runs on CPU on native Windows. The CNN's random initialization is unseeded, as in the historical notebook, so its combined score may vary slightly between runs.
+
+## Interactive prediction app
+
+Train both models once to create local inference artifacts:
+
+```powershell
+python .\src\wine-code.py --wine red
+python .\src\wine-code.py --wine white
+```
+
+Then start the desktop form:
+
+```powershell
+python .\app.py
+```
+
+Choose red or white wine, enter the 11 raw physicochemical measurements, and select **Predict quality**. The form applies the matching red or white scaling and computes the engineered alcohol-sulphates interaction automatically. It displays the predicted quality score and a project-defined tier (scores of 6 or higher are labeled higher quality). This is a quality estimate only; it does not determine food safety or edibility. Trained model files are stored locally under `artifacts/` and are excluded from Git.
