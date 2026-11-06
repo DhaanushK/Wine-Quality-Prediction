@@ -26,6 +26,49 @@ FEATURES = [
     "alcohol",
 ]
 
+FEATURE_LABELS = {
+    "fixed acidity": "Fixed acidity (g/dm³)",
+    "volatile acidity": "Volatile acidity (g/dm³)",
+    "citric acid": "Citric acid (g/dm³)",
+    "residual sugar": "Residual sugar (g/dm³)",
+    "chlorides": "Chlorides (g/dm³)",
+    "free sulfur dioxide": "Free sulfur dioxide (mg/dm³)",
+    "total sulfur dioxide": "Total sulfur dioxide (mg/dm³)",
+    "density": "Density (g/cm³)",
+    "pH": "pH",
+    "sulphates": "Sulphates (g/dm³)",
+    "alcohol": "Alcohol (% vol.)",
+}
+
+EXAMPLE_VALUES = {
+    "red": {
+        "fixed acidity": "7.4",
+        "volatile acidity": "0.70",
+        "citric acid": "0.00",
+        "residual sugar": "1.9",
+        "chlorides": "0.076",
+        "free sulfur dioxide": "11",
+        "total sulfur dioxide": "34",
+        "density": "0.9978",
+        "pH": "3.51",
+        "sulphates": "0.56",
+        "alcohol": "9.4",
+    },
+    "white": {
+        "fixed acidity": "7.0",
+        "volatile acidity": "0.27",
+        "citric acid": "0.36",
+        "residual sugar": "20.7",
+        "chlorides": "0.045",
+        "free sulfur dioxide": "45",
+        "total sulfur dioxide": "170",
+        "density": "1.0010",
+        "pH": "3.00",
+        "sulphates": "0.45",
+        "alcohol": "8.8",
+    },
+}
+
 COLORS = {
     "background": "#f4f1eb",
     "card": "#ffffff",
@@ -48,6 +91,7 @@ class WineQualityApp:
 
         self.wine_type = tk.StringVar(value="white")
         self.entries = {}
+        self.placeholder_active = {}
         self.pipeline_cache = {}
         self.model_cache = {}
         self.quality_result = tk.StringVar(value="Enter a sample to see its prediction")
@@ -71,6 +115,12 @@ class WineQualityApp:
             "Wine.TEntry",
             fieldbackground=COLORS["card"],
             foreground=COLORS["ink"],
+            padding=8,
+        )
+        style.configure(
+            "Wine.Placeholder.TEntry",
+            fieldbackground=COLORS["card"],
+            foreground=COLORS["muted"],
             padding=8,
         )
 
@@ -123,6 +173,7 @@ class WineQualityApp:
             style="Wine.TCombobox",
         )
         self.wine_selector.pack(side="left")
+        self.wine_selector.bind("<<ComboboxSelected>>", self._update_placeholders)
 
         form = tk.Frame(
             content,
@@ -145,7 +196,7 @@ class WineQualityApp:
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 3))
         tk.Label(
             form,
-            text="Enter the 11 raw measurements; scaling and derived features are handled automatically.",
+            text="Enter lab readings in the units shown. Example values are hints; replace each one with your sample's measurements.",
             bg=COLORS["card"],
             fg=COLORS["muted"],
             font=("Segoe UI", 9),
@@ -163,10 +214,9 @@ class WineQualityApp:
                 pady=3,
             )
             field.columnconfigure(0, weight=1)
-            label = "pH" if feature == "pH" else feature.title()
             tk.Label(
                 field,
-                text=label,
+                text=FEATURE_LABELS[feature],
                 bg=COLORS["card"],
                 fg=COLORS["muted"],
                 font=("Segoe UI", 9),
@@ -174,6 +224,16 @@ class WineQualityApp:
             entry = ttk.Entry(field, style="Wine.TEntry")
             entry.grid(row=1, column=0, sticky="ew")
             self.entries[feature] = entry
+            self.placeholder_active[feature] = False
+            entry.bind(
+                "<FocusIn>",
+                lambda _event, name=feature: self._clear_placeholder(name),
+            )
+            entry.bind(
+                "<FocusOut>",
+                lambda _event, name=feature: self._restore_placeholder(name),
+            )
+            self._show_placeholder(feature)
 
         actions = tk.Frame(content, bg=COLORS["background"])
         actions.grid(row=2, column=0, sticky="ew", pady=10)
@@ -279,6 +339,32 @@ class WineQualityApp:
             self.model_cache[wine_type] = load_model(model_path, compile=False)
         return self.pipeline_cache[wine_type], self.model_cache[wine_type]
 
+    def _show_placeholder(self, feature):
+        entry = self.entries[feature]
+        if entry.get():
+            return
+        entry.insert(0, f"e.g. {EXAMPLE_VALUES[self.wine_type.get()][feature]}")
+        entry.configure(style="Wine.Placeholder.TEntry")
+        self.placeholder_active[feature] = True
+
+    def _clear_placeholder(self, feature):
+        if self.placeholder_active[feature]:
+            entry = self.entries[feature]
+            entry.delete(0, tk.END)
+            entry.configure(style="Wine.TEntry")
+            self.placeholder_active[feature] = False
+
+    def _restore_placeholder(self, feature):
+        if not self.entries[feature].get().strip():
+            self._show_placeholder(feature)
+
+    def _update_placeholders(self, _event=None):
+        for feature, entry in self.entries.items():
+            if self.placeholder_active[feature]:
+                entry.delete(0, tk.END)
+                self.placeholder_active[feature] = False
+                self._show_placeholder(feature)
+
     def predict(self):
         try:
             wine_type = self.wine_type.get()
@@ -286,6 +372,10 @@ class WineQualityApp:
             feature_names = pipeline["features"]
             values = []
             for name in FEATURES:
+                if self.placeholder_active[name]:
+                    raise ValueError(
+                        f"Replace the example shown for {FEATURE_LABELS[name]} with your sample's lab reading."
+                    )
                 raw = self.entries[name].get().strip()
                 if not raw:
                     raise ValueError(f"Enter a value for {name}.")
@@ -355,8 +445,11 @@ class WineQualityApp:
             messagebox.showerror("Prediction failed", str(error), parent=self.root)
 
     def clear(self):
-        for entry in self.entries.values():
+        for name, entry in self.entries.items():
             entry.delete(0, tk.END)
+            entry.configure(style="Wine.TEntry")
+            self.placeholder_active[name] = False
+            self._show_placeholder(name)
         self.quality_result.set("Enter a sample to see its prediction")
         self.tier_result.set("")
         self.probability_result.set("")
